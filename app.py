@@ -26,13 +26,13 @@ def analizar_con_openrouter(texto=None, imagen_url=None):
         messages.append({
             "role": "user",
             "content": [
-                {"type": "text", "text": "Describe esta imagen:"},
+                {"type": "text", "text": "¿Qué hay en esta imagen?"},
                 {"type": "image_url", "image_url": {"url": imagen_url}}
             ]
         })
     
     data = {
-        "model": "google/gemini-2.5-pro-exp-03-25:free",  # Cambia al modelo deseado si es necesario
+        "model": "google/gemma-3-1b-it:free",  # Modelo compatible con imágenes
         "messages": messages
     }
     
@@ -207,9 +207,21 @@ if not df_corpus.empty:
 else:
     st.warning("No hay datos en el archivo CSV. Extrae datos de Project Gutenberg primero.")
 
+# Análisis de Imágenes
+st.sidebar.header("Análisis de Imágenes")
+imagen_url = st.sidebar.text_input("URL de la imagen", value="")
+if st.sidebar.button("Analizar Imagen"):
+    if imagen_url:
+        descripcion = analizar_con_openrouter(imagen_url=imagen_url)
+        if descripcion:
+            st.write("Descripción de la imagen:", descripcion)
+    else:
+        st.warning("Por favor, ingresa una URL válida para la imagen.")
+
 with st.expander("Acerca de esta aplicación"):
     st.write("""
     Esta aplicación extrae textos de Project Gutenberg y analiza la frecuencia del subjuntivo.
+    También permite analizar imágenes utilizando la API de OpenRouter.
     Los datos se almacenan en un archivo CSV ('corpus_gutenberg.csv') y se visualizan con Streamlit.
     Nota: La extracción automática requiere inspeccionar el HTML real y cumplir con los términos de uso.
     """)
