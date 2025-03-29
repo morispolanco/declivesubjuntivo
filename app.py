@@ -158,8 +158,8 @@ st.title("Análisis del Subjuntivo con Cervantes Virtual")
 st.sidebar.header("Extracción de Cervantes Virtual")
 
 # Sliders para año de inicio y fin
-anio_inicio = st.sidebar.slider("Año de inicio", 1500, 1600, 1500, step=20)
-anio_fin = st.sidebar.slider("Año de fin", anio_inicio + 20, 1600, anio_inicio + 20, step=20)
+anio_inicio = st.sidebar.slider("Año de inicio", 1600, 2000, 1600, step=20)
+anio_fin = st.sidebar.slider("Año de fin", anio_inicio + 20, 2000, anio_inicio + 20, step=20)
 
 # Máximo de textos por período
 max_textos = st.sidebar.slider("Máximo de textos por período", 1, 10, 5)
