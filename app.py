@@ -1,16 +1,14 @@
 import streamlit as st
 import pandas as pd
-import spacy
 import matplotlib.pyplot as plt
+import numpy as np
 import sqlite3
+import time
 import requests
 from bs4 import BeautifulSoup
-import numpy as np
-import time
 
 # Configuración inicial
 st.set_page_config(page_title="Análisis del Subjuntivo con Cervantes Virtual", layout="wide")
-nlp = spacy.load("es_core_news_lg")
 
 # Conexión a la base de datos SQLite
 db_path = "corpus_cervantes.db"
@@ -25,6 +23,59 @@ cursor.execute("""
     )
 """)
 conn.commit()
+
+# Acceso a la API Key desde Secrets
+openrouter_api_key = st.secrets["openrouter"]["api_key"]
+
+# Función para llamar a la API de OpenRouter
+def analizar_con_openrouter(texto=None, imagen_url=None):
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {openrouter_api_key}"
+    }
+    
+    # Construir el contenido del mensaje
+    messages = []
+    if texto:
+        messages.append({"role": "user", "content": [{"type": "text", "text": texto}]})
+    if imagen_url:
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Describe esta imagen:"},
+                {"type": "image_url", "image_url": {"url": imagen_url}}
+            ]
+        })
+    
+    data = {
+        "model": "google/gemini-2.5-pro-exp-03-25:free",
+        "messages": messages
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    except Exception as e:
+        st.error(f"Error al llamar a la API de OpenRouter: {e}")
+        return None
+
+# Función para analizar subjuntivo
+@st.cache_data
+def analizar_subjuntivo(texto):
+    resultado = analizar_con_openrouter(texto=texto)
+    if resultado:
+        # Supongamos que la respuesta contiene un número que indica la cantidad de subjuntivos
+        try:
+            subj_count = int(resultado.split()[0])  # Ajusta según la estructura de la respuesta
+            verb_count = len([word for word in texto.split() if word.lower().endswith(("ar", "er", "ir"))])
+            return subj_count, verb_count
+        except ValueError:
+            st.error("La respuesta del modelo no tiene el formato esperado.")
+            return 0, 0
+    return 0, 0
 
 # Función para buscar y extraer textos de Cervantes Virtual
 def extraer_datos_cervantes(anio_inicio, anio_fin, max_textos=5):
@@ -79,14 +130,6 @@ def extraer_datos_cervantes(anio_inicio, anio_fin, max_textos=5):
 def guardar_en_db(datos):
     cursor.executemany("INSERT OR IGNORE INTO corpus (periodo, texto, fuente, titulo) VALUES (?, ?, ?, ?)", datos)
     conn.commit()
-
-# Función para analizar subjuntivo
-@st.cache_data
-def analizar_subjuntivo(texto):
-    doc = nlp(texto)
-    subjuntivos = [token.text for token in doc if token.morph.get("Mood") == ["Subj"]]
-    verbos = [token.text for token in doc if token.pos_ == "VERB"]
-    return len(subjuntivos), len(verbos)
 
 # Función para procesar el corpus
 @st.cache_data
