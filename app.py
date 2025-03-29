@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-import time
 import requests
 from bs4 import BeautifulSoup
 
 # Configuración inicial
-st.set_page_config(page_title="Análisis del Subjuntivo con Cervantes Virtual", layout="wide")
+st.set_page_config(page_title="Análisis del Subjuntivo con Project Gutenberg", layout="wide")
 
 # Acceso a la API Key desde Secrets
 openrouter_api_key = st.secrets["openrouter"]["api_key"]
@@ -62,77 +61,31 @@ def analizar_subjuntivo(texto):
             return 0, 0
     return 0, 0
 
-# Función para buscar y extraer textos de Cervantes Virtual
-def extraer_datos_cervantes(anio_inicio, anio_fin, max_textos=5):
-    base_url = "http://www.cervantesvirtual.com/buscador/"
-    resultados = []
-    
-    # Parámetros de búsqueda (simulación)
-    payload = {
-        "q": f"fecha:{anio_inicio}-{anio_fin}",  # Búsqueda aproximada por rango de fechas
-        "type": "obra",
-        "sort": "fecha"
-    }
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
+# Función para descargar un libro de Project Gutenberg
+def descargar_libro_gutenberg(libro_id):
+    url = f"https://www.gutenberg.org/files/{libro_id}/{libro_id}-0.txt"
     try:
-        # Buscar obras en el catálogo
-        response = requests.get(base_url, params=payload, headers=headers)
+        response = requests.get(url)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        
-        # Extraer enlaces a obras (ajusta el selector tras inspeccionar)
-        obras = soup.select("ul.resultados li a")  # Hipotético, inspecciona HTML real
-        
-        if not obras:
-            st.error("No se encontraron obras en el rango de fechas especificado.")
-            return []
-        
-        st.info(f"Se encontraron {len(obras)} obras. Procesando...")
-        
-        for obra in obras[:max_textos]:
-            titulo = obra.get_text(strip=True)
-            enlace = obra.get("href")
-            if not enlace.startswith("http"):
-                enlace = "http://www.cervantesvirtual.com" + enlace
-            
-            # Acceder al texto completo
-            texto_response = requests.get(enlace, headers=headers)
-            texto_soup = BeautifulSoup(texto_response.text, "html.parser")
-            
-            # Extraer contenido (ajusta según estructura de la página)
-            contenido = texto_soup.select_one("div.texto-obra")  # Hipotético
-            if contenido:
-                texto = contenido.get_text(strip=True)[:1000]  # Limitar a 1000 caracteres por muestra
-                periodo = f"{anio_inicio}-{anio_fin}"
-                resultados.append((periodo, texto, "Cervantes Virtual", titulo))
-                st.info(f"Texto extraído: {titulo}")
-            else:
-                st.warning(f"No se pudo extraer el texto de: {titulo}")
-            
-            time.sleep(2)  # Pausa para evitar sobrecarga
-        
-        return resultados
+        texto = response.text
+        return texto[:10000]  # Limitar a 10,000 caracteres para evitar sobrecarga
     except Exception as e:
-        st.error(f"Error al conectar con Cervantes Virtual: {e}")
-        return []
+        st.error(f"Error al descargar el libro de Project Gutenberg: {e}")
+        return None
 
 # Función para guardar datos en un CSV
-def guardar_en_csv(datos, archivo="corpus_cervantes.csv"):
+def guardar_en_csv(datos, archivo="corpus_gutenberg.csv"):
     df = pd.DataFrame(datos, columns=["periodo", "texto", "fuente", "titulo"])
     df.to_csv(archivo, index=False, mode="a", header=not pd.io.common.file_exists(archivo))
     st.success(f"Guardados {len(datos)} registros en el archivo CSV: {archivo}")
 
 # Función para cargar datos desde un CSV
-def cargar_desde_csv(archivo="corpus_cervantes.csv"):
+def cargar_desde_csv(archivo="corpus_gutenberg.csv"):
     try:
         df = pd.read_csv(archivo)
         return df
     except FileNotFoundError:
-        st.warning("No se encontró el archivo CSV. Extrae datos de Cervantes Virtual primero.")
+        st.warning("No se encontró el archivo CSV. Extrae datos de Project Gutenberg primero.")
         return pd.DataFrame(columns=["periodo", "texto", "fuente", "titulo"])
 
 # Función para procesar el corpus
@@ -152,25 +105,30 @@ def procesar_corpus(df):
     return pd.DataFrame(resultados)
 
 # Interfaz de Streamlit
-st.title("Análisis del Subjuntivo con Cervantes Virtual")
+st.title("Análisis del Subjuntivo con Project Gutenberg")
 
-# Extracción de datos desde Cervantes Virtual
-st.sidebar.header("Extracción de Cervantes Virtual")
+# Extracción de datos desde Project Gutenberg
+st.sidebar.header("Extracción de Project Gutenberg")
+libro_ids = st.sidebar.text_input(
+    "IDs de libros (separados por comas)",
+    value="12345,67890,11111"
+).split(",")
+libro_ids = [int(id.strip()) for id in libro_ids if id.strip().isdigit()]
 
-# Sliders para año de inicio y fin
-anio_inicio = st.sidebar.slider("Año de inicio", 1600, 2000, 1600, step=20)
-anio_fin = st.sidebar.slider("Año de fin", anio_inicio + 20, 2000, anio_inicio + 20, step=20)
-
-# Máximo de textos por período
-max_textos = st.sidebar.slider("Máximo de textos por período", 1, 10, 5)
-
-if st.sidebar.button("Extraer datos de Cervantes Virtual"):
-    with st.spinner("Extrayendo datos de Cervantes Virtual..."):
-        datos = extraer_datos_cervantes(anio_inicio, anio_fin, max_textos)
+if st.sidebar.button("Extraer datos de Project Gutenberg"):
+    with st.spinner("Descargando y procesando libros..."):
+        datos = []
+        for libro_id in libro_ids:
+            texto = descargar_libro_gutenberg(libro_id)
+            if texto:
+                periodo = "general"  # Puedes ajustar esto según la fecha del libro
+                titulo = f"Libro {libro_id}"
+                datos.append((periodo, texto, "Project Gutenberg", titulo))
+                st.info(f"Texto extraído: Libro {libro_id}")
+        
         if datos:
             guardar_en_csv(datos)
-            st.success(f"Datos extraídos y guardados para {anio_inicio}-{anio_fin}")
-        time.sleep(2)
+            st.success("Datos extraídos y guardados.")
 
 # Cargar datos desde el CSV
 df_corpus = cargar_desde_csv()
@@ -230,15 +188,15 @@ if not df_corpus.empty:
         st.download_button(
             label="Descargar resultados como CSV",
             data=csv,
-            file_name="resultados_cervantes.csv",
+            file_name="resultados_gutenberg.csv",
             mime="text/csv"
         )
 else:
-    st.warning("No hay datos en el archivo CSV. Extrae datos de Cervantes Virtual primero.")
+    st.warning("No hay datos en el archivo CSV. Extrae datos de Project Gutenberg primero.")
 
 with st.expander("Acerca de esta aplicación"):
     st.write("""
-    Esta aplicación extrae textos de la Biblioteca Virtual Miguel de Cervantes y analiza la frecuencia del subjuntivo.
-    Los datos se almacenan en un archivo CSV ('corpus_cervantes.csv') y se visualizan con Streamlit.
+    Esta aplicación extrae textos de Project Gutenberg y analiza la frecuencia del subjuntivo.
+    Los datos se almacenan en un archivo CSV ('corpus_gutenberg.csv') y se visualizan con Streamlit.
     Nota: La extracción automática requiere inspeccionar el HTML real y cumplir con los términos de uso.
     """)
