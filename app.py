@@ -11,7 +11,7 @@ st.set_page_config(page_title="Análisis del Subjuntivo con Project Gutenberg", 
 openrouter_api_key = st.secrets["openrouter"]["api_key"]
 
 # Función para llamar a la API de OpenRouter
-def analizar_con_openrouter(texto=None, imagen_url=None):
+def analizar_con_openrouter(texto):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -19,21 +19,14 @@ def analizar_con_openrouter(texto=None, imagen_url=None):
     }
     
     # Construir el contenido del mensaje
-    messages = []
-    if texto:
-        messages.append({"role": "user", "content": [{"type": "text", "text": texto}]})
-    if imagen_url:
-        messages.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "¿Qué hay en esta imagen?"},
-                {"type": "image_url", "image_url": {"url": imagen_url}}
-            ]
-        })
-    
     data = {
-        "model": "google/gemma-3-1b-it:free",  # Modelo compatible con imágenes
-        "messages": messages
+        "model": "amazon/nova-micro-v1",  # Modelo seleccionado
+        "messages": [
+            {
+                "role": "user",
+                "content": texto  # Mensaje de entrada
+            }
+        ]
     }
     
     try:
@@ -207,21 +200,21 @@ if not df_corpus.empty:
 else:
     st.warning("No hay datos en el archivo CSV. Extrae datos de Project Gutenberg primero.")
 
-# Análisis de Imágenes
-st.sidebar.header("Análisis de Imágenes")
-imagen_url = st.sidebar.text_input("URL de la imagen", value="")
-if st.sidebar.button("Analizar Imagen"):
-    if imagen_url:
-        descripcion = analizar_con_openrouter(imagen_url=imagen_url)
-        if descripcion:
-            st.write("Descripción de la imagen:", descripcion)
+# Análisis de Texto Libre
+st.sidebar.header("Análisis de Texto Libre")
+texto_usuario = st.sidebar.text_area("Ingresa un texto para analizar", value="")
+if st.sidebar.button("Analizar Texto"):
+    if texto_usuario:
+        respuesta = analizar_con_openrouter(texto_usuario)
+        if respuesta:
+            st.write("Respuesta del modelo:", respuesta)
     else:
-        st.warning("Por favor, ingresa una URL válida para la imagen.")
+        st.warning("Por favor, ingresa un texto para analizar.")
 
 with st.expander("Acerca de esta aplicación"):
     st.write("""
     Esta aplicación extrae textos de Project Gutenberg y analiza la frecuencia del subjuntivo.
-    También permite analizar imágenes utilizando la API de OpenRouter.
+    También permite analizar texto libre utilizando el modelo amazon/nova-micro-v1 de OpenRouter.
     Los datos se almacenan en un archivo CSV ('corpus_gutenberg.csv') y se visualizan con Streamlit.
     Nota: La extracción automática requiere inspeccionar el HTML real y cumplir con los términos de uso.
     """)
