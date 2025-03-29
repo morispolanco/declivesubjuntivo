@@ -2,6 +2,10 @@ import streamlit as st
 import os
 from google import genai
 from google.genai import types
+import requests
+from bs4 import BeautifulSoup
+import re  # Importamos la biblioteca 're' para expresiones regulares
+
 
 # Configuración de la página
 st.set_page_config(page_title="Análisis de Tiempos Verbales Subjuntivos", layout="wide")
@@ -11,12 +15,10 @@ st.title("Análisis de Tiempos Verbales Subjuntivos en Textos del Proyecto Guten
 
 # Función para buscar el ID del libro en el Proyecto Gutenberg
 def get_gutenberg_book_id(title):
-    import requests
-    from bs4 import BeautifulSoup
     search_url = f"https://www.gutenberg.org/ebooks/search/?query={title}"
     response = requests.get(search_url)
     soup = BeautifulSoup(response.text, "html.parser")
-    book_link = soup.find("a", href=re.compile(r"/ebooks/\d+"))
+    book_link = soup.find("a", href=re.compile(r"/ebooks/\d+"))  # Usamos re.compile para buscar el patrón
     if book_link:
         book_id = re.search(r"/ebooks/(\d+)", book_link["href"]).group(1)
         return book_id
@@ -24,7 +26,6 @@ def get_gutenberg_book_id(title):
 
 # Función para obtener el texto del libro
 def get_gutenberg_text(book_id):
-    import requests
     text_url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
     response = requests.get(text_url)
     if response.status_code == 200:
