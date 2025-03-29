@@ -2,27 +2,12 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-import sqlite3
 import time
 import requests
 from bs4 import BeautifulSoup
 
 # Configuración inicial
 st.set_page_config(page_title="Análisis del Subjuntivo con Cervantes Virtual", layout="wide")
-
-# Conexión a la base de datos SQLite
-db_path = "corpus_cervantes.db"
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS corpus (
-        periodo TEXT,
-        texto TEXT,
-        fuente TEXT,
-        titulo TEXT
-    )
-""")
-conn.commit()
 
 # Acceso a la API Key desde Secrets
 openrouter_api_key = st.secrets["openrouter"]["api_key"]
@@ -126,10 +111,20 @@ def extraer_datos_cervantes(anio_inicio, anio_fin, max_textos=5):
         st.error(f"Error al conectar con Cervantes Virtual: {e}")
         return []
 
-# Función para guardar datos en SQLite
-def guardar_en_db(datos):
-    cursor.executemany("INSERT OR IGNORE INTO corpus (periodo, texto, fuente, titulo) VALUES (?, ?, ?, ?)", datos)
-    conn.commit()
+# Función para guardar datos en un CSV
+def guardar_en_csv(datos, archivo="corpus_cervantes.csv"):
+    df = pd.DataFrame(datos, columns=["periodo", "texto", "fuente", "titulo"])
+    df.to_csv(archivo, index=False, mode="a", header=not pd.io.common.file_exists(archivo))
+    st.success(f"Guardados {len(datos)} registros en el archivo CSV.")
+
+# Función para cargar datos desde un CSV
+def cargar_desde_csv(archivo="corpus_cervantes.csv"):
+    try:
+        df = pd.read_csv(archivo)
+        return df
+    except FileNotFoundError:
+        st.warning("No se encontró el archivo CSV. Extrae datos de Cervantes Virtual primero.")
+        return pd.DataFrame(columns=["periodo", "texto", "fuente", "titulo"])
 
 # Función para procesar el corpus
 @st.cache_data
@@ -160,14 +155,14 @@ if st.sidebar.button("Extraer datos de Cervantes Virtual"):
     with st.spinner("Extrayendo datos de Cervantes Virtual..."):
         datos = extraer_datos_cervantes(anio_inicio, anio_fin, max_textos)
         if datos:
-            guardar_en_db(datos)
+            guardar_en_csv(datos)
             st.success(f"Datos extraídos y guardados para {anio_inicio}-{anio_fin}")
         time.sleep(2)
 
-# Cargar datos desde la base de datos
-df_corpus = pd.read_sql_query("SELECT periodo, texto, titulo FROM corpus", conn)
+# Cargar datos desde el CSV
+df_corpus = cargar_desde_csv()
 if not df_corpus.empty:
-    st.write("Corpus cargado desde la base de datos:")
+    st.write("Corpus cargado desde el archivo CSV:")
     st.dataframe(df_corpus.head())
 
     # Filtros
@@ -226,14 +221,11 @@ if not df_corpus.empty:
             mime="text/csv"
         )
 else:
-    st.warning("No hay datos en la base de datos. Extrae datos de Cervantes Virtual primero.")
-
-# Cerrar conexión
-conn.close()
+    st.warning("No hay datos en el archivo CSV. Extrae datos de Cervantes Virtual primero.")
 
 with st.expander("Acerca de esta aplicación"):
     st.write("""
     Esta aplicación extrae textos de la Biblioteca Virtual Miguel de Cervantes y analiza la frecuencia del subjuntivo.
-    Los datos se almacenan en SQLite ('corpus_cervantes.db') y se visualizan con Streamlit.
+    Los datos se almacenan en un archivo CSV ('corpus_cervantes.csv') y se visualizan con Streamlit.
     Nota: La extracción automática requiere inspeccionar el HTML real y cumplir con los términos de uso.
     """)
