@@ -87,6 +87,12 @@ def extraer_datos_cervantes(anio_inicio, anio_fin, max_textos=5):
         # Extraer enlaces a obras (ajusta el selector tras inspeccionar)
         obras = soup.select("ul.resultados li a")  # Hipotético, inspecciona HTML real
         
+        if not obras:
+            st.error("No se encontraron obras en el rango de fechas especificado.")
+            return []
+        
+        st.info(f"Se encontraron {len(obras)} obras. Procesando...")
+        
         for obra in obras[:max_textos]:
             titulo = obra.get_text(strip=True)
             enlace = obra.get("href")
@@ -103,6 +109,9 @@ def extraer_datos_cervantes(anio_inicio, anio_fin, max_textos=5):
                 texto = contenido.get_text(strip=True)[:1000]  # Limitar a 1000 caracteres por muestra
                 periodo = f"{anio_inicio}-{anio_fin}"
                 resultados.append((periodo, texto, "Cervantes Virtual", titulo))
+                st.info(f"Texto extraído: {titulo}")
+            else:
+                st.warning(f"No se pudo extraer el texto de: {titulo}")
             
             time.sleep(2)  # Pausa para evitar sobrecarga
         
@@ -115,7 +124,7 @@ def extraer_datos_cervantes(anio_inicio, anio_fin, max_textos=5):
 def guardar_en_csv(datos, archivo="corpus_cervantes.csv"):
     df = pd.DataFrame(datos, columns=["periodo", "texto", "fuente", "titulo"])
     df.to_csv(archivo, index=False, mode="a", header=not pd.io.common.file_exists(archivo))
-    st.success(f"Guardados {len(datos)} registros en el archivo CSV.")
+    st.success(f"Guardados {len(datos)} registros en el archivo CSV: {archivo}")
 
 # Función para cargar datos desde un CSV
 def cargar_desde_csv(archivo="corpus_cervantes.csv"):
