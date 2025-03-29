@@ -28,32 +28,34 @@ def get_gutenberg_text(book_id):
         return response.text[:100000]  # Extraer los primeros 100,000 caracteres
     return None
 
-# Función para analizar tiempos verbales en modo subjuntivo usando OpenRouter
+# Función para analizar tiempos verbales en modo subjuntivo usando la API de Gemini
 def analyze_subjunctive_verbs(text):
-    api_key = st.secrets["OPENROUTER_API_KEY"]
+    api_key = st.secrets["GEMINI_API_KEY"]
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     headers = {
-        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     data = {
-        "model": "google/gemini-2.5-pro-exp-03-25:free",
-        "messages": [
+        "contents": [
             {
                 "role": "user",
-                "content": [
+                "parts": [
                     {
-                        "type": "text",
                         "text": f"Analiza el siguiente texto y encuentra todos los verbos en modo subjuntivo. Proporciona una lista de estos verbos y cuenta cuántas veces aparece cada uno. Texto: {text[:5000]}"  # Limitamos a 5000 caracteres por solicitud
                     }
                 ]
             }
-        ]
+        ],
+        "generationConfig": {
+            "temperature": 1,
+            "topK": 40,
+            "topP": 0.95,
+            "maxOutputTokens": 8192,
+            "responseMimeType": "text/plain"
+        }
     }
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json=data
-    )
+    params = {"key": api_key}
+    response = requests.post(url, headers=headers, json=data, params=params)
     
     # Verificar si la solicitud fue exitosa
     if response.status_code == 200:
@@ -63,11 +65,11 @@ def analyze_subjunctive_verbs(text):
             # Imprimir la respuesta completa para depuración
             print("Respuesta completa de la API:", result)
             
-            # Verificar si la estructura esperada existe
-            if "choices" in result and len(result["choices"]) > 0:
-                return result["choices"][0]["message"]["content"]
+            # Extraer el contenido de la respuesta
+            if "candidates" in result and len(result["candidates"]) > 0:
+                return result["candidates"][0]["content"]["parts"][0]["text"]
             else:
-                st.error("La respuesta de la API no contiene la clave 'choices'.")
+                st.error("La respuesta de la API no contiene la clave 'candidates'.")
                 return None
         except Exception as e:
             st.error(f"Error al procesar la respuesta de la API: {e}")
