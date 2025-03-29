@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
+import re
 
 # Configuración inicial
 st.set_page_config(page_title="Análisis del Subjuntivo con Project Gutenberg", layout="wide")
@@ -67,17 +68,31 @@ def analizar_subjuntivo(texto):
             return 0, 0
     return 0, 0
 
+# Función para extraer el título del libro
+def extraer_titulo(texto):
+    # Buscar el título en los metadatos del archivo
+    match = re.search(r"Title:\s*(.+)", texto, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return "Título no encontrado"
+
 # Función para descargar un libro de Project Gutenberg
 def descargar_libro_gutenberg(libro_id):
     url = f"https://www.gutenberg.org/files/{libro_id}/{libro_id}-0.txt"
     try:
         response = requests.get(url)
         response.raise_for_status()
-        texto = response.text
-        return texto[:10000]  # Limitar a 10,000 caracteres para evitar sobrecarga
+        texto_completo = response.text
+        
+        # Extraer el título del libro
+        titulo = extraer_titulo(texto_completo)
+        
+        # Limitar el texto a 10,000 caracteres para evitar sobrecarga
+        texto = texto_completo[:10000]
+        return texto, titulo
     except Exception as e:
         st.error(f"Error al descargar el libro de Project Gutenberg: {e}")
-        return None
+        return None, "Error al descargar"
 
 # Función para guardar datos en un CSV
 def guardar_en_csv(datos, archivo="corpus_gutenberg.csv"):
@@ -125,12 +140,11 @@ if st.sidebar.button("Extraer datos de Project Gutenberg"):
     with st.spinner("Descargando y procesando libros..."):
         datos = []
         for libro_id in libro_ids:
-            texto = descargar_libro_gutenberg(libro_id)
+            texto, titulo = descargar_libro_gutenberg(libro_id)
             if texto:
                 periodo = "general"  # Puedes ajustar esto según la fecha del libro
-                titulo = f"Libro {libro_id}"
                 datos.append((periodo, texto, "Project Gutenberg", titulo))
-                st.info(f"Texto extraído: Libro {libro_id}")
+                st.info(f"Texto extraído: {titulo}")
         
         if datos:
             guardar_en_csv(datos)
