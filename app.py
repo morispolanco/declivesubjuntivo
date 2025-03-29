@@ -54,11 +54,26 @@ def analyze_subjunctive_verbs(text):
         headers=headers,
         json=data
     )
+    
+    # Verificar si la solicitud fue exitosa
     if response.status_code == 200:
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
+        try:
+            result = response.json()
+            
+            # Imprimir la respuesta completa para depuración
+            print("Respuesta completa de la API:", result)
+            
+            # Verificar si la estructura esperada existe
+            if "choices" in result and len(result["choices"]) > 0:
+                return result["choices"][0]["message"]["content"]
+            else:
+                st.error("La respuesta de la API no contiene la clave 'choices'.")
+                return None
+        except Exception as e:
+            st.error(f"Error al procesar la respuesta de la API: {e}")
+            return None
     else:
-        st.error("Error al analizar el texto. Por favor, inténtalo de nuevo.")
+        st.error(f"Error al llamar a la API. Código de estado: {response.status_code}")
         return None
 
 # Interfaz de usuario
