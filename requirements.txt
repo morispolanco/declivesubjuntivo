@@ -3,6 +3,5 @@ pandas
 spacy
 matplotlib
 numpy
-sqlite3
 requests
 beautifulsoup4
