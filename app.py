@@ -1,7 +1,7 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import re
+import os
+from google import genai
+from google.genai import types
 
 # Configuración de la página
 st.set_page_config(page_title="Análisis de Tiempos Verbales Subjuntivos", layout="wide")
@@ -11,6 +11,8 @@ st.title("Análisis de Tiempos Verbales Subjuntivos en Textos del Proyecto Guten
 
 # Función para buscar el ID del libro en el Proyecto Gutenberg
 def get_gutenberg_book_id(title):
+    import requests
+    from bs4 import BeautifulSoup
     search_url = f"https://www.gutenberg.org/ebooks/search/?query={title}"
     response = requests.get(search_url)
     soup = BeautifulSoup(response.text, "html.parser")
@@ -22,60 +24,45 @@ def get_gutenberg_book_id(title):
 
 # Función para obtener el texto del libro
 def get_gutenberg_text(book_id):
+    import requests
     text_url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
     response = requests.get(text_url)
     if response.status_code == 200:
         return response.text[:100000]  # Extraer los primeros 100,000 caracteres
     return None
 
-# Función para analizar tiempos verbales en modo subjuntivo usando la API de Gemini
+# Función para analizar tiempos verbales en modo subjuntivo usando Gemini
 def analyze_subjunctive_verbs(text):
     api_key = st.secrets["GEMINI_API_KEY"]
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-    headers = {
-        "Content-Type": "application/json",
-    }
-    data = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "text": f"Analiza el siguiente texto y encuentra todos los verbos en modo subjuntivo. Proporciona una lista de estos verbos y cuenta cuántas veces aparece cada uno. Texto: {text[:5000]}"  # Limitamos a 5000 caracteres por solicitud
-                    }
-                ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 1,
-            "topK": 40,
-            "topP": 0.95,
-            "maxOutputTokens": 8192,
-            "responseMimeType": "text/plain"
-        }
-    }
-    params = {"key": api_key}
-    response = requests.post(url, headers=headers, json=data, params=params)
-    
-    # Verificar si la solicitud fue exitosa
-    if response.status_code == 200:
-        try:
-            result = response.json()
-            
-            # Imprimir la respuesta completa para depuración
-            print("Respuesta completa de la API:", result)
-            
-            # Extraer el contenido de la respuesta
-            if "candidates" in result and len(result["candidates"]) > 0:
-                return result["candidates"][0]["content"]["parts"][0]["text"]
-            else:
-                st.error("La respuesta de la API no contiene la clave 'candidates'.")
-                return None
-        except Exception as e:
-            st.error(f"Error al procesar la respuesta de la API: {e}")
-            return None
-    else:
-        st.error(f"Error al llamar a la API. Código de estado: {response.status_code}")
+    client = genai.Client(api_key=api_key)
+
+    model = "gemini-2.0-flash"
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(
+                    text=f"Analiza el siguiente texto y encuentra todos los verbos en modo subjuntivo. Proporciona una lista de estos verbos y cuenta cuántas veces aparece cada uno. Texto: {text[:5000]}"  # Limitamos a 5000 caracteres por solicitud
+                ),
+            ],
+        ),
+    ]
+    generate_content_config = types.GenerateContentConfig(
+        response_mime_type="text/plain",
+    )
+
+    try:
+        # Generar contenido usando Gemini
+        result = ""
+        for chunk in client.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
+        ):
+            result += chunk.text
+        return result
+    except Exception as e:
+        st.error(f"Error al llamar a la API de Gemini: {e}")
         return None
 
 # Interfaz de usuario
