@@ -1,234 +1,86 @@
 import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 import requests
+from bs4 import BeautifulSoup
 import re
 
-# Configuración inicial
-st.set_page_config(page_title="Análisis del Subjuntivo con Project Gutenberg", layout="wide")
+# Configuración de la página
+st.set_page_config(page_title="Análisis de Tiempos Verbales Subjuntivos", layout="wide")
 
-# Acceso a la API Key desde Secrets
-openrouter_api_key = st.secrets["openrouter"]["api_key"]
+# Título de la aplicación
+st.title("Análisis de Tiempos Verbales Subjuntivos en Textos del Proyecto Gutenberg")
 
-# Función para llamar a la API de OpenRouter
-def analizar_con_openrouter(texto):
-    url = "https://openrouter.ai/api/v1/chat/completions"
+# Función para buscar el ID del libro en el Proyecto Gutenberg
+def get_gutenberg_book_id(title):
+    search_url = f"https://www.gutenberg.org/ebooks/search/?query={title}"
+    response = requests.get(search_url)
+    soup = BeautifulSoup(response.text, "html.parser")
+    book_link = soup.find("a", href=re.compile(r"/ebooks/\d+"))
+    if book_link:
+        book_id = re.search(r"/ebooks/(\d+)", book_link["href"]).group(1)
+        return book_id
+    return None
+
+# Función para obtener el texto del libro
+def get_gutenberg_text(book_id):
+    text_url = f"https://www.gutenberg.org/cache/epub/{book_id}/pg{book_id}.txt"
+    response = requests.get(text_url)
+    if response.status_code == 200:
+        return response.text[:100000]  # Extraer los primeros 100,000 caracteres
+    return None
+
+# Función para analizar tiempos verbales en modo subjuntivo usando OpenRouter
+def analyze_subjunctive_verbs(text):
+    api_key = st.secrets["OPENROUTER_API_KEY"]
     headers = {
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {openrouter_api_key}"
     }
-    
-    # Construir el contenido del mensaje
     data = {
-        "model": "amazon/nova-micro-v1",  # Modelo seleccionado
+        "model": "google/gemini-2.5-pro-exp-03-25:free",
         "messages": [
             {
                 "role": "user",
-                "content": texto  # Mensaje de entrada
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Analiza el siguiente texto y encuentra todos los verbos en modo subjuntivo. Proporciona una lista de estos verbos y cuenta cuántas veces aparece cada uno. Texto: {text[:5000]}"  # Limitamos a 5000 caracteres por solicitud
+                    }
+                ]
             }
         ]
     }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
+    response = requests.post(
+        url="https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json=data
+    )
+    if response.status_code == 200:
         result = response.json()
-        
-        # Imprimir la respuesta completa para depuración
-        st.write("Respuesta completa de la API:", result)
-        
-        # Verificar si hay un error en la respuesta
-        if "error" in result:
-            st.error(f"Error en la API: {result['error']}")
-            return None
-        
-        # Verificar si 'choices' existe
-        if "choices" not in result or not isinstance(result["choices"], list) or len(result["choices"]) == 0:
-            st.error("La respuesta de la API no contiene 'choices' o está vacía.")
-            return None
-        
         return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        st.error(f"Error al llamar a la API de OpenRouter: {e}")
+    else:
+        st.error("Error al analizar el texto. Por favor, inténtalo de nuevo.")
         return None
 
-# Función para analizar subjuntivo
-@st.cache_data
-def analizar_subjuntivo(texto):
-    resultado = analizar_con_openrouter(texto=texto)
-    if resultado:
-        # Supongamos que la respuesta contiene un número que indica la cantidad de subjuntivos
-        try:
-            subj_count = int(resultado.split()[0])  # Ajusta según la estructura de la respuesta
-            verb_count = len([word for word in texto.split() if word.lower().endswith(("ar", "er", "ir"))])
-            return subj_count, verb_count
-        except ValueError:
-            st.error("La respuesta del modelo no tiene el formato esperado.")
-            return 0, 0
-    return 0, 0
+# Interfaz de usuario
+title = st.text_input("Introduce el título de una obra del Proyecto Gutenberg:")
 
-# Función para extraer el título del libro
-def extraer_titulo(texto):
-    # Buscar el título en los metadatos del archivo
-    match = re.search(r"Title:\s*(.+)", texto, re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
-    return "Título no encontrado"
+if title:
+    with st.spinner("Buscando el libro..."):
+        book_id = get_gutenberg_book_id(title)
+        if book_id:
+            st.success(f"Libro encontrado (ID: {book_id}). Descargando texto...")
+            text = get_gutenberg_text(book_id)
+            if text:
+                st.success("Texto descargado exitosamente.")
+                st.subheader("Resumen del Análisis")
+                st.write(f"Se han extraído los primeros {len(text)} caracteres del texto.")
 
-# Función para descargar un libro de Project Gutenberg
-def descargar_libro_gutenberg(libro_id):
-    url = f"https://www.gutenberg.org/files/{libro_id}/{libro_id}-0.txt"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        texto_completo = response.text
-        
-        # Extraer el título del libro
-        titulo = extraer_titulo(texto_completo)
-        
-        # Limitar el texto a 10,000 caracteres para evitar sobrecarga
-        texto = texto_completo[:10000]
-        return texto, titulo
-    except Exception as e:
-        st.error(f"Error al descargar el libro de Project Gutenberg: {e}")
-        return None, "Error al descargar"
-
-# Función para guardar datos en un CSV
-def guardar_en_csv(datos, archivo="corpus_gutenberg.csv"):
-    df = pd.DataFrame(datos, columns=["periodo", "texto", "fuente", "titulo"])
-    df.to_csv(archivo, index=False, mode="a", header=not pd.io.common.file_exists(archivo))
-    st.success(f"Guardados {len(datos)} registros en el archivo CSV: {archivo}")
-
-# Función para cargar datos desde un CSV
-def cargar_desde_csv(archivo="corpus_gutenberg.csv"):
-    try:
-        df = pd.read_csv(archivo)
-        return df
-    except FileNotFoundError:
-        st.warning("No se encontró el archivo CSV. Extrae datos de Project Gutenberg primero.")
-        return pd.DataFrame(columns=["periodo", "texto", "fuente", "titulo"])
-
-# Función para procesar el corpus
-@st.cache_data
-def procesar_corpus(df):
-    resultados = []
-    for idx, row in df.iterrows():
-        subj_count, verb_count = analizar_subjuntivo(row["texto"])
-        frecuencia = (subj_count / verb_count * 100) if verb_count > 0 else 0
-        resultados.append({
-            "Periodo": row["periodo"],
-            "Subjuntivos": subj_count,
-            "Verbos": verb_count,
-            "Frecuencia": frecuencia,
-            "Título": row["titulo"]
-        })
-    return pd.DataFrame(resultados)
-
-# Interfaz de Streamlit
-st.title("Análisis del Subjuntivo con Project Gutenberg")
-
-# Extracción de datos desde Project Gutenberg
-st.sidebar.header("Extracción de Project Gutenberg")
-libro_ids = st.sidebar.text_input(
-    "IDs de libros (separados por comas)",
-    value="12345,67890,11111"
-).split(",")
-libro_ids = [int(id.strip()) for id in libro_ids if id.strip().isdigit()]
-
-if st.sidebar.button("Extraer datos de Project Gutenberg"):
-    with st.spinner("Descargando y procesando libros..."):
-        datos = []
-        for libro_id in libro_ids:
-            texto, titulo = descargar_libro_gutenberg(libro_id)
-            if texto:
-                periodo = "general"  # Puedes ajustar esto según la fecha del libro
-                datos.append((periodo, texto, "Project Gutenberg", titulo))
-                st.info(f"Texto extraído: {titulo}")
-        
-        if datos:
-            guardar_en_csv(datos)
-            st.success("Datos extraídos y guardados.")
-
-# Cargar datos desde el CSV
-df_corpus = cargar_desde_csv()
-if not df_corpus.empty:
-    st.write("Corpus cargado desde el archivo CSV:")
-    st.dataframe(df_corpus.head())
-
-    # Filtros
-    st.sidebar.header("Filtros")
-    periodos_disponibles = sorted(df_corpus["periodo"].unique())
-    filtro_inicio = st.sidebar.selectbox("Período de inicio", periodos_disponibles, index=0)
-    filtro_fin = st.sidebar.selectbox("Período de fin", periodos_disponibles, index=len(periodos_disponibles)-1)
-    mostrar_detalle = st.sidebar.checkbox("Mostrar detalle", value=True)
-
-    # Filtrar corpus
-    df_filtrado = df_corpus[
-        df_corpus["periodo"].apply(lambda x: x >= filtro_inicio and x <= filtro_fin)
-    ]
-
-    # Procesar datos
-    if not df_filtrado.empty:
-        df_resultados = procesar_corpus(df_filtrado)
-
-        st.subheader("Resultados Generales")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Subjuntivos", df_resultados["Subjuntivos"].sum())
-        col2.metric("Total Verbos", df_resultados["Verbos"].sum())
-        col3.metric("Frecuencia Media", f"{df_resultados['Frecuencia'].mean():.2f}%")
-
-        if mostrar_detalle:
-            st.subheader("Detalles por Período")
-            st.dataframe(df_resultados.style.format({"Frecuencia": "{:.2f}%"}))
-
-        st.subheader("Evolución del Subjuntivo")
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(df_resultados["Periodo"], df_resultados["Frecuencia"], marker="o", color="b")
-        ax.set_xlabel("Período")
-        ax.set_ylabel("Frecuencia (%)")
-        ax.set_title("Frecuencia del Subjuntivo")
-        plt.xticks(rotation=45)
-        st.pyplot(fig)
-
-        st.subheader("Distribución de Subjuntivos y Verbos")
-        fig2, ax2 = plt.subplots(figsize=(10, 5))
-        bar_width = 0.35
-        x = np.arange(len(df_resultados["Periodo"]))
-        ax2.bar(x - bar_width/2, df_resultados["Subjuntivos"], bar_width, label="Subjuntivos", color="skyblue")
-        ax2.bar(x + bar_width/2, df_resultados["Verbos"], bar_width, label="Verbos Totales", color="lightcoral")
-        ax2.set_xlabel("Período")
-        ax2.set_ylabel("Cantidad")
-        ax2.set_xticks(x)
-        ax2.set_xticklabels(df_resultados["Periodo"], rotation=45)
-        ax2.legend()
-        st.pyplot(fig2)
-
-        csv = df_resultados.to_csv(index=False)
-        st.download_button(
-            label="Descargar resultados como CSV",
-            data=csv,
-            file_name="resultados_gutenberg.csv",
-            mime="text/csv"
-        )
-else:
-    st.warning("No hay datos en el archivo CSV. Extrae datos de Project Gutenberg primero.")
-
-# Análisis de Texto Libre
-st.sidebar.header("Análisis de Texto Libre")
-texto_usuario = st.sidebar.text_area("Ingresa un texto para analizar", value="")
-if st.sidebar.button("Analizar Texto"):
-    if texto_usuario:
-        respuesta = analizar_con_openrouter(texto_usuario)
-        if respuesta:
-            st.write("Respuesta del modelo:", respuesta)
-    else:
-        st.warning("Por favor, ingresa un texto para analizar.")
-
-with st.expander("Acerca de esta aplicación"):
-    st.write("""
-    Esta aplicación extrae textos de Project Gutenberg y analiza la frecuencia del subjuntivo.
-    También permite analizar texto libre utilizando el modelo amazon/nova-micro-v1 de OpenRouter.
-    Los datos se almacenan en un archivo CSV ('corpus_gutenberg.csv') y se visualizan con Streamlit.
-    Nota: La extracción automática requiere inspeccionar el HTML real y cumplir con los términos de uso.
-    """)
+                with st.spinner("Analizando tiempos verbales en modo subjuntivo..."):
+                    analysis_result = analyze_subjunctive_verbs(text)
+                    if analysis_result:
+                        st.subheader("Resultados del Análisis")
+                        st.write(analysis_result)
+            else:
+                st.error("No se pudo descargar el texto del libro.")
+        else:
+            st.error("No se encontró ningún libro con ese título.")
