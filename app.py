@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
-from bs4 import BeautifulSoup
 
 # Configuración inicial
 st.set_page_config(page_title="Análisis del Subjuntivo con Project Gutenberg", layout="wide")
@@ -33,7 +32,7 @@ def analizar_con_openrouter(texto=None, imagen_url=None):
         })
     
     data = {
-        "model": "google/gemini-2.5-pro-exp-03-25:free",
+        "model": "google/gemini-2.5-pro-exp-03-25:free",  # Cambia al modelo deseado si es necesario
         "messages": messages
     }
     
@@ -41,6 +40,20 @@ def analizar_con_openrouter(texto=None, imagen_url=None):
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         result = response.json()
+        
+        # Imprimir la respuesta completa para depuración
+        st.write("Respuesta completa de la API:", result)
+        
+        # Verificar si hay un error en la respuesta
+        if "error" in result:
+            st.error(f"Error en la API: {result['error']}")
+            return None
+        
+        # Verificar si 'choices' existe
+        if "choices" not in result or not isinstance(result["choices"], list) or len(result["choices"]) == 0:
+            st.error("La respuesta de la API no contiene 'choices' o está vacía.")
+            return None
+        
         return result["choices"][0]["message"]["content"]
     except Exception as e:
         st.error(f"Error al llamar a la API de OpenRouter: {e}")
